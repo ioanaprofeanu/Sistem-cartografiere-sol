@@ -2,7 +2,7 @@
 
 Acesta este proiectul meu la Proiectarea cu Microprocesoare. Este un sistem inteligent de cartografiere a solului, ce este capabil sa afiseze metricile de mediu (recalculate la o ora), metricile medii, precum si sa afiseze pe ecran o lista cu plantele ce pot fi plantate in acel mediu.
 
-Proiectul utilizeaza urmatoarele tehnologii:
+Proiectul utilizeaza urmatoarele:
 
 - Intreruperi hardware (pentru butonul ce controleaza meniul)
 - Software (timer)
