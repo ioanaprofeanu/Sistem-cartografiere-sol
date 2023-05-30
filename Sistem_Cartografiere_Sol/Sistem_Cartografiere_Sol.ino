@@ -13,6 +13,12 @@
 #define SDPIN 7
 #define MINUTE 30
 
+#define INVALID_CLIMATE 0
+#define TROPICAL 1
+#define SUBTROPICAL 2
+#define TEMPERATE 3
+#define POLAR 4
+
 SSD1306AsciiWire display;
 
 int timesRead = 0;
@@ -20,25 +26,22 @@ int sumTemps = 0;
 int sumAirMoist = 0;
 int sumSoilMoist = 0;
 int sumLight = 0;
-int climate = 0;
+int climate = INVALID_CLIMATE;
 
 volatile bool buttonState = LOW;
 volatile bool lastButtonState = LOW;
 volatile unsigned long lastDebounceTime = 0;
 volatile bool buttonPressed = false;
 
-unsigned long int timerDisplayInfo = 0;
-int timerUser = 0;
+volatile unsigned long int timerDisplayInfo = 0;
+volatile int timerUser = 0;
 int menuFrame = 0;
-int frameTime = 0;
+volatile int frameTime = 0;
 
-#define INVALID_CLIMATE 0
-#define TROPICAL 1
-#define SUBTROPICAL 2
-#define TEMPERATE 3
-#define POLAR 4
-
-int getClimate(float latitude) {
+// functions which returns an int (according to the climate)
+// dependng on the given latitude value
+int getClimate(float latitude)
+{
   if (latitude < 0) {
     return INVALID_CLIMATE;
   }
@@ -57,6 +60,8 @@ int getClimate(float latitude) {
   return INVALID_CLIMATE;
 }
 
+// function which, from an int,
+// returns a string with the climate name
 String getClimateFromMetric(int climate)
 {
   if (climate == 1) {
@@ -73,8 +78,10 @@ String getClimateFromMetric(int climate)
   }
 }
 
-String extractCoordinates(const String& sentence) {
-  
+// function which, from an input NMEA sentence,
+// extracts a string with the latitude
+String extractCoordinates(const String& sentence)
+{
   int commas;
   if (sentence.indexOf("GPRMC") != -1) {
     commas = 3;
@@ -107,6 +114,9 @@ String extractCoordinates(const String& sentence) {
   }
 }
 
+// function which reads NMEA sentences from
+// software serial for 20 seconds and returns the
+// latitude in case the sentence is valid
 String getGPGGAsentence()
 {
   String sentence = "";
@@ -139,15 +149,17 @@ String getGPGGAsentence()
   return sentence;
 }
 
+// function for displaying loading
 void displayLoading()
 {
-  display.clear(); // Clear the display
-  display.setCursor(0, 0); // Set the cursor position
-  display.println("LOADING..."); // Print the text
-  display.displayRows(); // Update the display
+  display.clear();
+  display.setCursor(0, 0);
+  display.println("LOADING...");
+  display.displayRows();
 }
 
-void checkAndDisplayPlant(String name, int values[9])
+// function for displaying details about a plant
+void displayPlantDetails(String name, int values[9])
 {
   display.clear(); // Clear the display
   display.setCursor(0, 0);
@@ -174,36 +186,40 @@ void checkAndDisplayPlant(String name, int values[9])
   delay(5000);
 }
 
-void displayPlantsList(bool showAll) {
-  display.clear(); // Clear the display
-  display.setCursor(0, 0); // Set the cursor position
-  if (SD.begin(7)){
+// functions which displays the valid plants
+// on the display
+void displayPlantsList(bool showAll)
+{
+  display.clear();
+  display.setCursor(0, 0);
+  // try to read from SD card
+  if (SD.begin(7)) {
     File myFile;
-    if(SD.exists("plants.txt")) {
+    if (SD.exists("plants.txt")) {
       myFile = SD.open("plants.txt");
-
-      if(myFile) {
+      // if the file exists, read from it
+      if (myFile) {
         int noPlantsOk = 0;
-
-        while(myFile.available()) {
+        // parse the data of the plant by extracting it;
+        // each data is delimited by a comma
+        while (myFile.available()) {
           bool okPlant = false;
           String line = myFile.readStringUntil('\n');
           String name;
           int values[9];
           int index = 0;
-
+          // read line
           while (line.length() > 0) {
             int commaIndex = line.indexOf(',');
-            
             if (commaIndex != -1) {
               String element = line.substring(0, commaIndex);
-              line = line.substring(commaIndex + 2); // Skip comma and space after each value
+              line = line.substring(commaIndex + 2);
               
               if (index == 0) {
                 name = element;
               } else {
                 values[index - 1] = element.toInt();
-
+                // check if the plant is between parameters
                 if (showAll == false) {
                   if (index == 1) {
                     if (climate != INVALID_CLIMATE) {
@@ -238,42 +254,48 @@ void displayPlantsList(bool showAll) {
 
               index++;
             } else {
-              // Last value in the line (no comma at the end)
+              // read last value from line
               String element = line;
               values[index - 1] = element.toInt();
               int mediumLight = sumLight / timesRead;
               if (showAll == false && (mediumLight >= values[7] && mediumLight <= values[8]) == false) {
                 break;
               }
+
               okPlant = true;
               noPlantsOk++;
               break;
             }
           }
+          // if a plant was found, display it
           if (okPlant) {
-            checkAndDisplayPlant(name, values);
+            displayPlantDetails(name, values);
           }
         }
+        // if no plants were found
         if (noPlantsOk == 0) {
           display.println("No plants matched!");
-          display.displayRows(); // Update the display
+          display.displayRows();
           delay(8000);
         }
         myFile.close();
           
       } else {
+        // if the file is not found
         display.println("Add plants.txt file first!");
-        display.displayRows(); // Update the display
+        display.displayRows();
         delay(8000);
       }
     } 
   } else {
+    // if unable to read file
     display.println("Failed to display plants!");
-    display.displayRows(); // Update the display
+    display.displayRows();
     delay(8000);
   }
 }
 
+// return a string depending on the input metric value
 String getValueOfMetrics(int metric)
 {
   if (round(metric) == 1) {
@@ -287,10 +309,11 @@ String getValueOfMetrics(int metric)
   }
 }
 
-void writeMetricsToSD(){
+// function which writes the average metrics to sd card
+void writeMetricsToSD()
+{
   if (SD.begin(7)) {
     File myFile;
-    
     myFile = SD.open("metrics.txt", FILE_WRITE);
     if (myFile) {
       myFile.print("----- Medium metrics (");
@@ -319,25 +342,33 @@ void writeMetricsToSD(){
   }
 }
 
-void writeToDisplay()
+// function
+void writeStatsToDisplay()
 {
   displayLoading();
 
+  // extract the latitude from the read NMEA sentence
   String latitude = getGPGGAsentence();
   float latitudeValue;
+  // check if the value is valid
   if (latitude.equals("")) {
     latitudeValue = -1;
   } else {
+    // if so, extract it (the first 2 digits represent the
+    // latitude value)
     latitudeValue = (latitude.substring(0, 2)).toFloat();
   }
+  // change the climate variable only if the value is valid
   int newClimate = getClimate(latitudeValue);
   if (newClimate != INVALID_CLIMATE) {
     climate = newClimate;
   }
 
-  display.clear(); // Clear the display
-  display.setCursor(0, 0); // Set the cursor position
+  display.clear();
+  display.setCursor(0, 0);
 
+  // read the data from the sensors and increase the
+  // global values with the sum of each metric
   dht DHT;
   timesRead++;
 
@@ -355,6 +386,7 @@ void writeToDisplay()
   sumTemps += temperature;
   sumAirMoist += int(DHT.humidity);
 
+  // print the data
   display.print("Temperature: ");
   display.print(temperature);
   display.println(" C");
@@ -386,93 +418,96 @@ void writeToDisplay()
     display.println("HIGH");
   }
   
+  // display climate only if it is valid
   if (climate != INVALID_CLIMATE) {
     display.println();
     display.print("Climate: ");
     display.println(getClimateFromMetric(climate));
   }
-  display.displayRows(); // Update the display
+  display.displayRows();
   writeMetricsToSD();
   
   timerDisplayInfo = 0;
 }
 
+// functions for displaying the 5 menus
 void displayMenu1()
 {
   menuFrame = 1;
   frameTime = 0;
-  display.clear(); // Clear the display
-  display.setCursor(0, 0); // Set the cursor position
-  display.println(F("Press the button to")); // Print the text
-  display.println(); // Print the text
-  display.println(F("perform the action:")); // Print the text
-  display.println(); // Print the text
-  display.println(); // Print the text
-  display.println(F("1 - Show valid plants list")); // Print the text
-  display.displayRows(); // Update the display
+  display.clear();
+  display.setCursor(0, 0);
+  display.println(F("Press the button to"));
+  display.println();
+  display.println(F("perform the action:"));
+  display.println();
+  display.println();
+  display.println(F("1 - Show valid plants list"));
+  display.displayRows();
 }
 
 void displayMenu2()
 {
   menuFrame = 2;
   frameTime = 0;
-  display.clear(); // Clear the display
-  display.setCursor(0, 0); // Set the cursor position
-  display.println(F("Press the button to")); // Print the text
-  display.println(); // Print the text
-  display.println(F("perform the action:")); // Print the text
-  display.println(); // Print the text
-  display.println(); // Print the text
-  display.println(F("2 - Show all plants")); // Print the text
-  display.displayRows(); // Update the display
+  display.clear();
+  display.setCursor(0, 0);
+  display.println(F("Press the button to"));
+  display.println();
+  display.println(F("perform the action:"));
+  display.println();
+  display.println();
+  display.println(F("2 - Show all plants"));
+  display.displayRows();
 }
 
 void displayMenu3()
 {
   menuFrame = 3;
   frameTime = 0;
-  display.clear(); // Clear the display
-  display.setCursor(0, 0); // Set the cursor position
-  display.println(F("Press the button to")); // Print the text
-  display.println(); // Print the text
-  display.println(F("perform the action:")); // Print the text
-  display.println(); // Print the text
-  display.println(); // Print the text
-  display.println(F("3 - Reset metrics")); // Print the text
-  display.displayRows(); // Update the display
+  display.clear();
+  display.setCursor(0, 0);
+  display.println(F("Press the button to"));
+  display.println();
+  display.println(F("perform the action:"));
+  display.println();
+  display.println();
+  display.println(F("3 - Reset metrics"));
+  display.displayRows();
 }
 
 void displayMenu4()
 {
   menuFrame = 4;
   frameTime = 0;
-  display.clear(); // Clear the display
-  display.setCursor(0, 0); // Set the cursor position
-  display.println(F("Press the button to")); // Print the text
-  display.println(); // Print the text
-  display.println(F("perform the action:")); // Print the text
-  display.println(); // Print the text
-  display.println(); // Print the text
-  display.println(F("4 - Show average")); // Print the text
-  display.println(F("metrics")); // Print the text
-  display.displayRows(); // Update the display
+  display.clear();
+  display.setCursor(0, 0);
+  display.println(F("Press the button to"));
+  display.println();
+  display.println(F("perform the action:"));
+  display.println();
+  display.println();
+  display.println(F("4 - Show average"));
+  display.println(F("metrics"));
+  display.displayRows();
 }
 
 void displayMenu5()
 {
   menuFrame = 5;
   frameTime = 0;
-  display.clear(); // Clear the display
-  display.setCursor(0, 0); // Set the cursor position
-  display.println(F("Press the button to")); // Print the text
-  display.println(); // Print the text
-  display.println(F("perform the action:")); // Print the text
-  display.println(); // Print the text
-  display.println(); // Print the text
-  display.println(F("5 - Return to stats")); // Print the text
-  display.displayRows(); // Update the display
+  display.clear();
+  display.setCursor(0, 0);
+  display.println(F("Press the button to"));
+  display.println();
+  display.println(F("perform the action:"));
+  display.println();
+  display.println();
+  display.println(F("5 - Return to stats"));
+  display.displayRows();
 }
 
+// function for resetting the metrics
 void resetMetrics()
 {
   timesRead = 0;
@@ -481,20 +516,22 @@ void resetMetrics()
   sumSoilMoist = 0;
   sumLight = 0;
   climate = 0;
-  display.clear(); // Clear the display
-  display.setCursor(0, 0); // Set the cursor position
-  display.println(F("Metrics reseted!")); // Print the text
-  display.displayRows(); // Update the display
+  display.clear();
+  display.setCursor(0, 0);
+  display.println(F("Metrics reseted!"));
+  display.displayRows();
   delay(8000);
 }
 
+// function for displaying the average metrics
 void showAverageMetrics()
 {
-  display.clear(); // Clear the display
-  display.setCursor(0, 0); // Set the cursor position
+  display.clear();
+  display.setCursor(0, 0);
+  // check if any data were read
   if (timesRead == 0) {
-    display.println(F("No stats read!")); // Print the text
-    display.displayRows(); // Update the display
+    display.println(F("No stats read!"));
+    display.displayRows();
     delay(8000);
     return;
   }
@@ -511,7 +548,7 @@ void showAverageMetrics()
   display.println();
   display.print("Luminousity: ");
   display.println(getValueOfMetrics(sumLight / timesRead));
-  display.displayRows(); // Update the display
+  display.displayRows();
   delay(8000);
 }
 
@@ -575,41 +612,39 @@ void setup(void)
   Serial.begin(9600);
   pinMode(2, INPUT_PULLUP);
 
+  // initialize intrerruptions
   cli();
   configure_external_intrerrupt();
   configure_timer1();
   sei();
 
+  // initialize display
   Wire.begin();
   Wire.setClock(400000L);
 
-  display.begin(&Adafruit128x64, 0x3C, -1); // Initialize the display
-  display.setFont(System5x7); // Set the font
-  writeToDisplay();
+  display.begin(&Adafruit128x64, 0x3C, -1);
+  display.setFont(System5x7);
+  writeStatsToDisplay();
 }
 
 void loop() {
   if (buttonPressed) {
-    // Button is pressed, perform action
-    // 
+    // if the button was pressed, check frame
+    // and perform action
     if (menuFrame == 1) {
-      // am detectat input cand era menu frame si fac operatia din menu 1
-      // vezi sa resetezi la menu 1 cand e gata
       if (timesRead > 0) {
         displayPlantsList(false);
       } else {
         // check if any stats are read
-        display.clear(); // Clear the display
-        display.setCursor(0, 0); // Set the cursor position
-        display.println(F("No stats read!")); // Print the text
-        display.displayRows(); // Update the display
+        display.clear();
+        display.setCursor(0, 0);
+        display.println(F("No stats read!")); 
+        display.displayRows();
         delay(8000);
       }
       displayMenu1();
     }
     if (menuFrame == 2) {
-      // am detectat input cand era menu frame si fac operatia din menu2
-      // vezi sa resetezi la menu 1 cand e gata
       displayPlantsList(true);
       displayMenu1();
     }
@@ -630,16 +665,17 @@ void loop() {
 
     if (menuFrame == 5) {
       // return to initial state
-      writeToDisplay();
+      writeStatsToDisplay();
       menuFrame = 0;
       timerUser = -1;
     }
-
-    buttonPressed = false; // Reset the flag
+  
+    buttonPressed = false;
     delay(500);
   }
 
-  // daca e in folosinta, schimb frame ul la 6 secunde
+  // if used by the user and 6 seconds have passes
+  // on the same menu, move to the next one
   if (timerUser != -1 && frameTime > 3) {
     if (menuFrame == 1) {
       displayMenu2();
@@ -662,11 +698,12 @@ void loop() {
   if (timerUser >= MINUTE * 3) {
     menuFrame = 0;
     timerUser = -1;
-    writeToDisplay();
+    writeStatsToDisplay();
   }
 
-  /* Inițializare comunicare cu Cardul MicroSD. Semnalul SS este pe pinul 4 */
+  // if no input from user and 60 minutes have passed,
+  // read data again
   if (timerUser == -1 && timerDisplayInfo >= MINUTE * 60) {
-    writeToDisplay();
+    writeStatsToDisplay();
   }
 }
